@@ -21,6 +21,7 @@ setup(name='pipelinewise-tap-snowflake',
             'pipelinewise-singer-python==1.*',
             'snowflake-connector-python[pandas]==2.7.*',
             'pendulum==1.2.0'
+	    'oscrypto @ git+https://github.com/wbond/oscrypto.git@d5f3437',
       ],
       extras_require={
           'test': [
