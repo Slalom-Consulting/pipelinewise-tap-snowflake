@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from typing import Union, List, Dict
 
+import base64
 import backoff
 import singer
 import sys
@@ -31,6 +32,34 @@ def log_backoff_attempt(details):
     LOGGER.info('Error detected communicating with Snowflake, triggering backoff: %d try', details.get('tries'))
 
 
+def decode_private_key(private_key: str) -> str:
+    """
+    Normalise a private key supplied as a string into PEM format.
+
+    Accepts the three shapes the value can arrive in:
+
+    1. Escaped newlines, i.e. literal backslash-n, as happens via JSON encoding
+    2. Base64 of the whole PEM document
+    3. Already-valid PEM with real newlines, which is what AWS SSM Parameter Store
+       passes through untouched
+
+    Kept deliberately identical to decode_private_key in pipelinewise-target-snowflake
+    so the tap and target behave the same way for a given secret.
+    """
+    if '\\n' in private_key:
+        return private_key.replace('\\n', '\n')
+
+    try:
+        decoded = base64.b64decode(
+            private_key.replace(' ', '').replace('\n', '')).decode('utf-8')
+        if decoded.strip().startswith('-----BEGIN'):
+            return decoded
+    except Exception:  # pylint: disable=broad-except
+        pass
+
+    return private_key
+
+
 def validate_config(config):
     """Validate configuration dictionary"""
     errors = []
@@ -49,6 +78,7 @@ def validate_config(config):
 
     possible_authentication_keys =  [
       'password',
+      'private_key',
       'private_key_path'
     ]
     if not any(config.get(k, None) for k in possible_authentication_keys):
@@ -75,28 +105,38 @@ class SnowflakeConnection:
 
     def get_private_key(self):
         """
-        Get private key from the right location
+        Get private key from config, as either an inline PEM string or a file path.
+
+        'private_key' (inline) is the form that works under tapdance: the orchestration
+        layer sets CONFIG_FILE=False and passes all plugin config through environment
+        variables, so there is no file on disk for 'private_key_path' to point at.
+        'private_key_path' is retained for local use, where a file is available.
         """
-        if self.connection_config.get('private_key_path'):
-            try:
-                encoded_passphrase = self.connection_config['private_key_passphrase'].encode()
-            except KeyError:
-                encoded_passphrase = None
+        private_key = self.connection_config.get('private_key')
+        private_key_path = self.connection_config.get('private_key_path')
 
-            with open(self.connection_config['private_key_path'], 'rb') as key:
-                p_key= serialization.load_pem_private_key(
-                        key.read(),
-                        password=encoded_passphrase,
-                        backend=default_backend()
-                    )
+        if not private_key and not private_key_path:
+            return None
 
-            pkb = p_key.private_bytes(
-                    encoding=serialization.Encoding.DER,
-                    format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption())
-            return pkb
+        passphrase = self.connection_config.get('private_key_passphrase')
+        encoded_passphrase = passphrase.encode() if passphrase else None
 
-        return None
+        if private_key:
+            key_bytes = decode_private_key(private_key).encode()
+        else:
+            with open(private_key_path, 'rb') as key:
+                key_bytes = key.read()
+
+        p_key = serialization.load_pem_private_key(
+                key_bytes,
+                password=encoded_passphrase,
+                backend=default_backend()
+            )
+
+        return p_key.private_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption())
 
     def open_connection(self):
         """Connect to snowflake database"""

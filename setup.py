@@ -25,6 +25,9 @@ setup(name='pipelinewise-tap-snowflake',
             'snowflake-connector-python[pandas]>=3.0.0,<4.0.0',
             'pendulum>=2.0.0,<3.0.0',
             'numpy>=1.21.0,<2.0.0',
+            # Imported directly by connection.py for key pair auth. Previously arrived
+            # only transitively, via snowflake-connector-python.
+            'cryptography',
 	        'oscrypto @ git+https://github.com/wbond/oscrypto.git@d5f3437',
       ],
       extras_require={
