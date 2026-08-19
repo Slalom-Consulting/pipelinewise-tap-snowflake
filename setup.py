@@ -14,13 +14,20 @@ setup(name='pipelinewise-tap-snowflake',
       url='https://github.com/transferwise/pipelinewise-tap-snowflake',
       classifiers=[
           'License :: OSI Approved :: Apache Software License',
-          'Programming Language :: Python :: 3 :: Only'
+          'Programming Language :: Python :: 3 :: Only',
+          'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.10',
+          'Programming Language :: Python :: 3.11'
       ],
       py_modules=['tap_snowflake'],
       install_requires=[
             'pipelinewise-singer-python==1.*',
-            'snowflake-connector-python[pandas]==2.7.*',
-            'pendulum==1.2.0',
+            'snowflake-connector-python[pandas]>=3.0.0,<4.0.0',
+            'pendulum>=2.0.0,<3.0.0',
+            'numpy>=1.21.0,<2.0.0',
+            # Imported directly by connection.py for key pair auth. Previously arrived
+            # only transitively, via snowflake-connector-python.
+            'cryptography',
 	        'oscrypto @ git+https://github.com/wbond/oscrypto.git@d5f3437',
       ],
       extras_require={
